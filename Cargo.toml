@@ -1,6 +1,6 @@
 [package]
 name = "tagged_dispatch"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jon Davis <khalen@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -10,9 +10,10 @@ documentation = "https://docs.rs/tagged_dispatch"
 repository = "https://github.com/khalen/tagged_dispatch"
 keywords = ["dispatch", "polymorphism", "tagged-pointer", "performance"]
 categories = ["data-structures", "no-std", "memory-management"]
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 
 [dependencies]
-tagged_dispatch_macros = { version = "0.1.1", path = "tagged_dispatch_macros" }
+tagged_dispatch_macros = { version = "0.1.2", path = "tagged_dispatch_macros" }
 
 # Optional allocator support
 bumpalo = { version = "3.14", optional = true }
