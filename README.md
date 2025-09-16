@@ -204,8 +204,7 @@ For high-performance scenarios, use arena allocation to get `Copy` types and eli
 
 Dispatch multiple traits through the same enum:
 
-```rust,ignore
-# // This example shows the syntax but requires complete type definitions
+```rust
 use tagged_dispatch::tagged_dispatch;
 
 #[tagged_dispatch]
@@ -223,14 +222,49 @@ enum Shape {
     Circle,      // Simplified syntax
     Rectangle,
 }
+
+// Complete the example with struct definitions
+#[derive(Clone)]
+struct Circle { radius: f32 }
+
+impl Draw for Circle {
+    fn draw(&self) {
+        println!("Drawing circle");
+    }
+}
+
+impl Serialize for Circle {
+    fn serialize(&self) -> String {
+        format!("Circle({})", self.radius)
+    }
+}
+
+#[derive(Clone)]
+struct Rectangle { width: f32, height: f32 }
+
+impl Draw for Rectangle {
+    fn draw(&self) {
+        println!("Drawing rectangle");
+    }
+}
+
+impl Serialize for Rectangle {
+    fn serialize(&self) -> String {
+        format!("Rectangle({}x{})", self.width, self.height)
+    }
+}
+
+// Example usage
+let shape = Shape::circle(Circle { radius: 5.0 });
+shape.draw();
+assert_eq!(shape.serialize(), "Circle(5)");
 ```
 
 ### Default Implementations
 
 Traits with default implementations work as expected:
 
-```rust,ignore
-# // This example shows the syntax but requires complete type definitions
+```rust
 use tagged_dispatch::tagged_dispatch;
 
 #[tagged_dispatch]
@@ -241,14 +275,51 @@ trait Animal {
         4  // Default implementation
     }
 }
+
+#[tagged_dispatch(Animal)]
+enum Pet {
+    Dog,
+    Bird,
+}
+
+#[derive(Clone)]
+struct Dog;
+
+impl Animal for Dog {
+    fn make_sound(&self) -> &str {
+        "Woof!"
+    }
+    // Uses default legs() implementation (4)
+}
+
+#[derive(Clone)]
+struct Bird;
+
+impl Animal for Bird {
+    fn make_sound(&self) -> &str {
+        "Tweet!"
+    }
+
+    fn legs(&self) -> u32 {
+        2  // Override default
+    }
+}
+
+// Example usage
+let dog = Pet::dog(Dog);
+assert_eq!(dog.make_sound(), "Woof!");
+assert_eq!(dog.legs(), 4);  // Uses default
+
+let bird = Pet::bird(Bird);
+assert_eq!(bird.make_sound(), "Tweet!");
+assert_eq!(bird.legs(), 2);  // Overridden
 ```
 
 ### Non-Dispatched Methods
 
 Mark trait methods that shouldn't be dispatched with `#[no_dispatch]`:
 
-```rust,ignore
-# // This example shows the syntax but requires complete type definitions
+```rust
 use tagged_dispatch::tagged_dispatch;
 
 #[tagged_dispatch]
@@ -260,6 +331,37 @@ trait MyTrait {
         "This won't be dispatched"
     }
 }
+
+#[tagged_dispatch(MyTrait)]
+enum Value {
+    First,
+    Second,
+}
+
+#[derive(Clone)]
+struct First(i32);
+
+impl MyTrait for First {
+    fn dispatched(&self) -> i32 {
+        self.0
+    }
+}
+
+#[derive(Clone)]
+struct Second(i32);
+
+impl MyTrait for Second {
+    fn dispatched(&self) -> i32 {
+        self.0 * 2
+    }
+}
+
+// Example usage
+let val = Value::first(First(5));
+assert_eq!(val.dispatched(), 5);  // This is dispatched
+
+// Static method is called on the concrete type, not the enum
+assert_eq!(<First as MyTrait>::not_dispatched(), "This won't be dispatched");
 ```
 
 ## Architecture Requirements
