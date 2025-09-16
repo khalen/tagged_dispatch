@@ -8,13 +8,13 @@ Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but
 
 ## Features
 
-- **🎯 8-byte enums** - Constant size regardless of variant types
-- **⚡ Zero-cost dispatch** - Inlined, no vtable overhead
-- **📦 Familiar API** - Works like `enum_dispatch`
-- **🔧 No allocator required** - Works with `no_std` (bring your own allocator)
-- **🚀 Cache-friendly** - Better locality than fat enums
-- **🏗️ Arena allocation support** - Optional arena allocation for even better performance
-- **🍎 Apple Silicon optimized** - Leverages ARM64 TBI for zero-cost tag removal
+- **8-byte enums** - Constant size regardless of variant types
+- **Zero-cost dispatch** - Inlined, no vtable overhead
+- **Familiar API** - Works like `enum_dispatch`
+- **No allocator required** - Works with `no_std` (bring your own allocator)
+- **Cache-friendly** - Better locality than fat enums
+- **Arena allocation support** - Optional arena allocation for even better performance
+- **Apple Silicon optimized** - Leverages ARM64 TBI for zero-cost tag removal
 
 ## Installation
 
@@ -117,21 +117,21 @@ fn main() {
 ## When to Use
 
 ### Use `tagged_dispatch` when:
-- ✅ You have many instances and memory usage is critical (8 bytes vs potentially hundreds)
-- ✅ Your variants are large or vary significantly in size
-- ✅ You can accept the heap allocation overhead
-- ✅ You want better cache locality for collections
+- You have many instances and memory usage is critical (8 bytes vs potentially hundreds)
+- Your variants are large or vary significantly in size
+- You can accept the heap allocation overhead
+- You want better cache locality for collections
 
 ### Use `enum_dispatch` when:
-- ✅ You want stack allocation and no heap overhead
-- ✅ Your variants are similarly sized or small
-- ✅ You have fewer instances
-- ✅ You need the absolute fastest dispatch (no pointer indirection)
+- You want stack allocation and no heap overhead
+- Your variants are similarly sized or small
+- You have fewer instances
+- You need the absolute fastest dispatch (no pointer indirection)
 
 ### Use trait objects when:
-- ✅ You need open sets of types (not known at compile time)
-- ✅ You're okay with 16-byte fat pointers
-- ✅ You need to work with external types you don't control
+- You need open sets of types (not known at compile time)
+- You're okay with 16-byte fat pointers
+- You need to work with external types you don't control
 
 ## Memory Models
 
@@ -374,10 +374,10 @@ This crate requires x86-64 or AArch64 architectures where the top 7 bits of 64-b
 
 ## Limitations
 
-- ⚠️ Supports up to 128 variant types (7-bit tag)
-- ⚠️ Generic traits are not yet supported
-- ⚠️ Requires heap allocation for variants (or arena allocation)
-- ⚠️ Only works on x86-64 and AArch64 architectures
+- Supports up to 128 variant types (7-bit tag)
+- Generic traits are not yet supported
+- Requires heap allocation for variants (or arena allocation)
+- Only works on x86-64 and AArch64 architectures
 
 ## Safety
 
