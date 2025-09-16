@@ -2,9 +2,10 @@
 name = "tagged_dispatch"
 version = "0.1.0"
 authors = ["Jon Davis <khalen@gmail.com>"]
-edition = "2024"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Memory efficient trait dispatch using tagged pointers."
+readme = "README.md"
 documentation = "https://docs.rs/tagged_dispatch"
 repository = "https://github.com/khalen/tagged_dispatch"
 keywords = ["dispatch", "polymorphism", "tagged-pointer", "performance"]

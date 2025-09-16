@@ -151,8 +151,6 @@ pub struct TaggedPtr<T> {
 }
 
 impl<T> TaggedPtr<T> {
-    /// Number of bits used for the tag (top 7 bits)
-    const TAG_BITS: usize = 7;
     const TAG_SHIFT: usize = 57;
     const TAG_MASK: usize = 0x7F << Self::TAG_SHIFT;
     const PTR_MASK: usize = !Self::TAG_MASK;
@@ -187,19 +185,32 @@ impl<T> TaggedPtr<T> {
         ((self.ptr & Self::TAG_MASK) >> Self::TAG_SHIFT) as u8
     }
     
-    /// Get the untagged pointer
+    /// Get the untagged pointer.
+    ///
+    /// # Safety
+    /// The returned pointer is only valid if the original pointer passed to `new` is still valid.
     #[inline(always)]
     pub fn ptr(&self) -> *mut T {
         (self.ptr & Self::PTR_MASK) as *mut T
     }
     
-    /// Get a reference to the pointed value
+    /// Get a reference to the pointed value.
+    ///
+    /// # Safety
+    /// The caller must ensure that:
+    /// - The pointer is valid and points to a properly initialized `T`
+    /// - The pointed-to value is not being concurrently mutated
     #[inline(always)]
     pub unsafe fn as_ref(&self) -> &T {
         unsafe { &*self.ptr() }
     }
 
-    /// Get a mutable reference to the pointed value
+    /// Get a mutable reference to the pointed value.
+    ///
+    /// # Safety
+    /// The caller must ensure that:
+    /// - The pointer is valid and points to a properly initialized `T`
+    /// - No other references to the pointed-to value exist
     #[inline(always)]
     pub unsafe fn as_mut(&mut self) -> &mut T {
         unsafe { &mut *self.ptr() }
@@ -218,10 +229,7 @@ unsafe impl<T: Sync> Sync for TaggedPtr<T> {}
 
 impl<T> Clone for TaggedPtr<T> {
     fn clone(&self) -> Self {
-        Self {
-            ptr: self.ptr,
-            _phantom: PhantomData,
-        }
+        *self
     }
 }
 

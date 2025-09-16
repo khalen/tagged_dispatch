@@ -1,25 +1,45 @@
 # tagged_dispatch
 
-Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but your enums are only 8 bytes regardless of the variant size!
+[![Crates.io](https://img.shields.io/crates/v/tagged_dispatch.svg)](https://crates.io/crates/tagged_dispatch)
+[![Documentation](https://docs.rs/tagged_dispatch/badge.svg)](https://docs.rs/tagged_dispatch)
+[![License](https://img.shields.io/crates/l/tagged_dispatch.svg)](https://github.com/khalen/tagged_dispatch#license)
+
+Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but your enums are only 8 bytes on 64-bit systems, regardless of the variant size!
 
 ## Features
 
-- **8-byte enums** - Constant size regardless of variant types
-- **Zero-cost dispatch** - Inlined, no vtable overhead
-- **Familiar API** - Works like `enum_dispatch`
-- **No allocator required** - Works with `no_std` (bring your own allocator)
-- **Cache-friendly** - Better locality than fat enums
+- **🎯 8-byte enums** - Constant size regardless of variant types
+- **⚡ Zero-cost dispatch** - Inlined, no vtable overhead
+- **📦 Familiar API** - Works like `enum_dispatch`
+- **🔧 No allocator required** - Works with `no_std` (bring your own allocator)
+- **🚀 Cache-friendly** - Better locality than fat enums
+- **🏗️ Arena allocation support** - Optional arena allocation for even better performance
 
-## Example
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+tagged_dispatch = "0.1"
+
+# Optional: Enable arena allocation support
+tagged_dispatch = { version = "0.1", features = ["allocator-bumpalo"] }
+```
+
+## Quick Example
+
 ```rust
 use tagged_dispatch::tagged_dispatch;
 
+// Define your trait
 #[tagged_dispatch]
 trait Draw {
     fn draw(&self);
     fn area(&self) -> f32;
 }
 
+// Create an enum with variants that implement the trait
 #[tagged_dispatch(Draw)]
 enum Shape {
     Circle(Circle),
@@ -27,21 +47,211 @@ enum Shape {
     Triangle(Triangle),
 }
 
+// Implement the trait for each variant
 struct Circle { radius: f32 }
+
 impl Draw for Circle {
-    fn draw(&self) { /* ... */ }
-    fn area(&self) -> f32 { 
-        std::f32::consts::PI * self.radius * self.radius 
+    fn draw(&self) {
+        println!("Drawing a circle with radius {}", self.radius);
+    }
+
+    fn area(&self) -> f32 {
+        std::f32::consts::PI * self.radius * self.radius
     }
 }
 
-// ... implement for Rectangle and Triangle ...
+struct Rectangle { width: f32, height: f32 }
 
-fn main() {
-    let shape = Shape::circle(Circle { radius: 5.0 });
-    shape.draw();
-    
-    // Only 8 bytes, not size_of::<largest variant>()!
-    assert_eq!(std::mem::size_of::<Shape>(), 8);
+impl Draw for Rectangle {
+    fn draw(&self) {
+        println!("Drawing a {}x{} rectangle", self.width, self.height);
+    }
+
+    fn area(&self) -> f32 {
+        self.width * self.height
+    }
 }
 
+struct Triangle { base: f32, height: f32 }
+
+impl Draw for Triangle {
+    fn draw(&self) {
+        println!("Drawing a triangle with base {} and height {}", self.base, self.height);
+    }
+
+    fn area(&self) -> f32 {
+        0.5 * self.base * self.height
+    }
+}
+
+fn main() {
+    // Create shapes using generated constructors
+    let shapes = vec![
+        Shape::circle(Circle { radius: 5.0 }),
+        Shape::rectangle(Rectangle { width: 10.0, height: 5.0 }),
+        Shape::triangle(Triangle { base: 8.0, height: 6.0 }),
+    ];
+
+    // Dispatch trait methods
+    for shape in &shapes {
+        shape.draw();
+        println!("Area: {}", shape.area());
+    }
+
+    // Only 8 bytes per enum, not size_of::<largest variant>()!
+    assert_eq!(std::mem::size_of::<Shape>(), 8);
+}
+```
+
+## When to Use
+
+### Use `tagged_dispatch` when:
+- ✅ You have many instances and memory usage is critical (8 bytes vs potentially hundreds)
+- ✅ Your variants are large or vary significantly in size
+- ✅ You can accept the heap allocation overhead
+- ✅ You want better cache locality for collections
+
+### Use `enum_dispatch` when:
+- ✅ You want stack allocation and no heap overhead
+- ✅ Your variants are similarly sized or small
+- ✅ You have fewer instances
+- ✅ You need the absolute fastest dispatch (no pointer indirection)
+
+### Use trait objects when:
+- ✅ You need open sets of types (not known at compile time)
+- ✅ You're okay with 16-byte fat pointers
+- ✅ You need to work with external types you don't control
+
+## Advanced Features
+
+### Arena Allocation
+
+For high-performance scenarios, use arena allocation to get `Copy` types and eliminate individual allocations:
+
+```rust
+#[cfg(feature = "allocator-bumpalo")]
+{
+    use tagged_dispatch::tagged_dispatch;
+
+    #[tagged_dispatch]
+    trait Process {
+        fn process(&self, value: i32) -> i32;
+    }
+
+    #[tagged_dispatch(Process)]
+    enum Processor<'a> {  // Note the lifetime parameter
+        Doubler(Doubler),
+        Squarer(Squarer),
+    }
+
+    struct Doubler;
+    impl Process for Doubler {
+        fn process(&self, value: i32) -> i32 { value * 2 }
+    }
+
+    struct Squarer;
+    impl Process for Squarer {
+        fn process(&self, value: i32) -> i32 { value * value }
+    }
+
+    // Create an arena builder
+    let builder = Processor::arena_builder();
+
+    // Allocate variants in the arena - returns Copy types!
+    let proc1 = builder.doubler(Doubler);
+    let proc2 = builder.squarer(Squarer);
+
+    // These are Copy - just 8 bytes each!
+    let proc3 = proc1;  // Copied, not moved!
+
+    assert_eq!(proc1.process(5), 10);
+    assert_eq!(proc2.process(5), 25);
+    assert_eq!(proc3.process(5), 10);
+}
+```
+
+### Multiple Trait Dispatch
+
+Dispatch multiple traits through the same enum:
+
+```rust
+#[tagged_dispatch]
+trait Draw {
+    fn draw(&self);
+}
+
+#[tagged_dispatch]
+trait Serialize {
+    fn serialize(&self) -> String;
+}
+
+#[tagged_dispatch(Draw, Serialize)]
+enum Shape {
+    Circle(Circle),
+    Rectangle(Rectangle),
+}
+```
+
+### Default Implementations
+
+Traits with default implementations work as expected:
+
+```rust
+#[tagged_dispatch]
+trait Animal {
+    fn make_sound(&self) -> &str;
+
+    fn legs(&self) -> u32 {
+        4  // Default implementation
+    }
+}
+```
+
+### Non-Dispatched Methods
+
+Mark trait methods that shouldn't be dispatched with `#[no_dispatch]`:
+
+```rust
+#[tagged_dispatch]
+trait MyTrait {
+    fn dispatched(&self) -> i32;
+
+    #[no_dispatch]
+    fn not_dispatched() -> &'static str {
+        "This won't be dispatched"
+    }
+}
+```
+
+## Architecture Requirements
+
+This crate requires x86-64 or AArch64 architectures where the top 7 bits of 64-bit pointers are unused (standard on modern Linux, macOS, and Windows systems).
+
+## Limitations
+
+- ⚠️ Supports up to 128 variant types (7-bit tag)
+- ⚠️ Generic traits are not yet supported
+- ⚠️ Requires heap allocation for variants (or arena allocation)
+- ⚠️ Only works on x86-64 and AArch64 architectures
+
+## Safety
+
+This crate uses `unsafe` code for tagged pointer manipulation. All unsafe operations are carefully documented and tested. The safety invariants are:
+
+1. Pointers are always valid and properly aligned
+2. Tags are always within the valid range (0-127)
+3. Proper cleanup via `Drop` implementation
+4. Type safety enforced at compile time
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

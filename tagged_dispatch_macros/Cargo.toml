@@ -2,9 +2,12 @@
 name = "tagged_dispatch_macros"
 version = "0.1.0"
 authors = ["Jon Davis <khalen@gmail.com>"]
-edition = "2024"
+edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Proc macros for tagged_dispatch"
+description = "Procedural macros for memory-efficient trait dispatch using tagged pointers"
+documentation = "https://docs.rs/tagged_dispatch_macros"
+repository = "https://github.com/khalen/tagged_dispatch"
+readme = "../README.md"
 
 [lib]
 proc-macro = true

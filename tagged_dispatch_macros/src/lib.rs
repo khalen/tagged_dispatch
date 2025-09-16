@@ -375,7 +375,10 @@ fn generate_arena_impl(
 
                     #[cfg(feature = "allocator-bumpalo")]
                     #arena_type_name::Bumpalo { arena, .. } => {
-                        arena.alloc(value) as *mut #ty as *mut ()
+                        unsafe {
+                            let arena_ref = &**arena;
+                            arena_ref.alloc(value) as *mut #ty as *mut ()
+                        }
                     }
                 };
 
@@ -442,8 +445,9 @@ fn generate_arena_impl(
 
             #[cfg(feature = "allocator-bumpalo")]
             Bumpalo {
-                arena: &#lifetime ::bumpalo::Bump,
+                arena: *mut ::bumpalo::Bump,
                 owned: bool,
+                _phantom: ::core::marker::PhantomData<&#lifetime ()>,
             },
         }
 
@@ -474,8 +478,9 @@ fn generate_arena_impl(
                 let arena = Box::leak(Box::new(::bumpalo::Bump::new()));
                 #builder_name {
                     allocator: #arena_type_name::Bumpalo {
-                        arena,
+                        arena: arena as *mut _,
                         owned: true,
+                        _phantom: ::core::marker::PhantomData,
                     },
                     _phantom: ::core::marker::PhantomData,
                 }
@@ -486,8 +491,9 @@ fn generate_arena_impl(
             pub fn with_external_bumpalo(arena: &#lifetime ::bumpalo::Bump) -> Self {
                 Self {
                     allocator: #arena_type_name::Bumpalo {
-                        arena,
+                        arena: arena as *const _ as *mut _,
                         owned: false,
+                        _phantom: ::core::marker::PhantomData,
                     },
                     _phantom: ::core::marker::PhantomData,
                 }
@@ -516,11 +522,10 @@ fn generate_arena_impl(
                     }
 
                     #[cfg(feature = "allocator-bumpalo")]
-                    #arena_type_name::Bumpalo { arena, owned: true } => {
+                    #arena_type_name::Bumpalo { arena, owned: true, .. } => {
                         // SAFETY: We know this is safe because we own the arena
                         unsafe {
-                            let mutable_arena = &mut *(arena as *const _ as *mut ::bumpalo::Bump);
-                            mutable_arena.reset();
+                            (&mut **arena).reset();
                         }
                     }
 
@@ -547,9 +552,11 @@ fn generate_arena_impl(
 
                     #[cfg(feature = "allocator-bumpalo")]
                     #arena_type_name::Bumpalo { arena, .. } => {
-                        ::tagged_dispatch::ArenaStats {
-                            allocated_bytes: arena.allocated_bytes(),
-                            chunk_capacity: arena.chunk_capacity(),
+                        unsafe {
+                            ::tagged_dispatch::ArenaStats {
+                                allocated_bytes: (&**arena).allocated_bytes(),
+                                chunk_capacity: (&**arena).chunk_capacity(),
+                            }
                         }
                     }
                 }
