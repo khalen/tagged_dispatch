@@ -43,9 +43,9 @@ trait Validator {
 
 #[tagged_dispatch(Renderer, Cacheable, Validator)]
 enum Component {
-    Button(Button),
-    Input(Input),
-    Label(Label),
+    Button,  // Simplified: expands to Button(Button)
+    Input,   // Simplified: expands to Input(Input)
+    Label,   // Simplified: expands to Label(Label)
 }
 
 #[derive(Clone)]
@@ -241,9 +241,9 @@ fn test_static_methods() {
 fn test_mixed_with_arena() {
     #[tagged_dispatch(Renderer, Cacheable, Validator)]
     enum ComponentArena<'a> {
-        Button(Button),
-        Input(Input),
-        Label(Label),
+        Button,  // Arena version also uses simplified syntax
+        Input,
+        Label,
     }
 
     let builder = ComponentArena::arena_builder();

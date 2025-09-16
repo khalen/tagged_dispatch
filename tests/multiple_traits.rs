@@ -21,9 +21,9 @@ trait Named {
 
 #[tagged_dispatch(Draw, Geometry, Named)]
 enum Shape {
-    Circle(Circle),
-    Rectangle(Rectangle),
-    Triangle(Triangle),
+    Circle,      // Simplified syntax - macro expands to Circle(Circle)
+    Rectangle,   // Simplified syntax - macro expands to Rectangle(Rectangle)
+    Triangle,    // Simplified syntax - macro expands to Triangle(Triangle)
 }
 
 #[derive(Clone)]
@@ -170,9 +170,9 @@ fn test_multiple_traits_with_arena() {
     // Create a separate enum with lifetime for arena tests
     #[tagged_dispatch(Draw, Geometry, Named)]
     enum ShapeArena<'a> {
-        Circle(Circle),
-        Rectangle(Rectangle),
-        Triangle(Triangle),
+        Circle,      // Using simplified syntax in arena version too
+        Rectangle,
+        Triangle,
     }
 
     let builder = ShapeArena::arena_builder();

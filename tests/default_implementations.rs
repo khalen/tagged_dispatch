@@ -28,10 +28,10 @@ trait Animal {
 
 #[tagged_dispatch(Animal)]
 enum Pet {
-    Dog(Dog),
-    Cat(Cat),
-    Bird(Bird),
-    Spider(Spider),
+    Dog,     // Simplified syntax
+    Cat,     // Macro expands these to Dog(Dog), Cat(Cat), etc.
+    Bird,
+    Spider,
 }
 
 #[derive(Clone)]
