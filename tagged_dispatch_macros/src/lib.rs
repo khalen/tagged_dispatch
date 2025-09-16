@@ -72,7 +72,7 @@ fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_a
     #[cfg(feature = "allocator-bumpalo")]
     variants.push(quote! {
         Bumpalo {
-            arena: *mut ::bumpalo::Bump,
+            arena: *mut ::tagged_dispatch::bumpalo::Bump,
             owned: bool,
             _phantom: ::core::marker::PhantomData<&#lifetime ()>,
         }
@@ -140,7 +140,7 @@ fn generate_builder_methods(
         pub fn with_bumpalo() -> #builder_name<'static> {
             // Use a leaked Box to get 'static lifetime for owned arena - is there a better way to
             // do this? Maybe a OnceCell?
-            let arena = Box::leak(Box::new(::bumpalo::Bump::new()));
+            let arena = Box::leak(Box::new(::tagged_dispatch::bumpalo::Bump::new()));
             #builder_name {
                 allocator: #arena_type_name::Bumpalo {
                     arena: arena as *mut _,
@@ -152,7 +152,7 @@ fn generate_builder_methods(
         }
 
         /// Create a builder with external bumpalo arena
-        pub fn with_external_bumpalo(arena: &#lifetime ::bumpalo::Bump) -> Self {
+        pub fn with_external_bumpalo(arena: &#lifetime ::tagged_dispatch::bumpalo::Bump) -> Self {
             Self {
                 allocator: #arena_type_name::Bumpalo {
                     arena: arena as *const _ as *mut _,

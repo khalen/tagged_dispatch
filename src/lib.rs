@@ -14,6 +14,13 @@ use std::boxed::Box;
 // Re-export the macro
 pub use tagged_dispatch_macros::tagged_dispatch;
 
+// Re-export allocator crates when their features are enabled
+#[cfg(feature = "allocator-bumpalo")]
+pub use bumpalo;
+
+#[cfg(feature = "allocator-typed-arena")]
+pub use typed_arena;
+
 /// The core tagged pointer type used internally.
 ///
 /// Uses the top 7 bits of a 64-bit pointer for type tagging,
