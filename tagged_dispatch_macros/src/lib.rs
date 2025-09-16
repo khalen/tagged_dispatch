@@ -213,8 +213,9 @@ fn generate_owned_impl(
     
     // Generate Drop implementation
     let drop_arms = variants.iter().enumerate().map(|(i, (_variant, ty))| {
+        let tag = i as u8;
         quote! {
-            #i => {
+            #tag => {
                 let ptr = self.0.ptr() as *mut #ty;
                 drop(Box::from_raw(ptr));
             }
@@ -224,8 +225,9 @@ fn generate_owned_impl(
     // Generate Clone implementation
     let clone_arms = variants.iter().enumerate().map(|(i, (variant, ty))| {
         let method_name = format_ident!("{}", variant.to_string().to_snake_case());
+        let tag = i as u8;
         quote! {
-            #i => {
+            #tag => {
                 let ptr = self.0.ptr() as *const #ty;
                 let cloned = (*ptr).clone();
                 Self::#method_name(cloned)

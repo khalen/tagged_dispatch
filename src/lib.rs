@@ -127,7 +127,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use core::marker::PhantomData;
+
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+#[cfg(feature = "std")]
+use std::boxed::Box;
 
 // Re-export the macro
 pub use tagged_dispatch_macros::tagged_dispatch;
