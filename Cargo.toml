@@ -10,7 +10,6 @@ documentation = "https://docs.rs/tagged_dispatch"
 repository = "https://github.com/khalen/tagged_dispatch"
 keywords = ["dispatch", "polymorphism", "tagged-pointer", "performance"]
 categories = ["data-structures", "no-std", "memory-management"]
-include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 
 [dependencies]
 tagged_dispatch_macros = { version = "0.1.2", path = "tagged_dispatch_macros" }
