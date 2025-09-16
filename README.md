@@ -10,7 +10,6 @@ Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but
 
 - **8-byte enums** - Constant size regardless of variant types
 - **Zero-cost dispatch** - Inlined, no vtable overhead
-- **Familiar API** - Works like `enum_dispatch`
 - **No allocator required** - Works with `no_std` (bring your own allocator)
 - **Cache-friendly** - Better locality than fat enums
 - **Arena allocation support** - Optional arena allocation for even better performance
@@ -50,9 +49,9 @@ trait Draw {
 // Create an enum with variants that implement the trait
 #[tagged_dispatch(Draw)]
 enum Shape {
-    Circle,      // Simplified syntax - automatically expands to Circle(Circle)
-    Rectangle,   // Expands to Rectangle(Rectangle)
-    Triangle,    // Expands to Triangle(Triangle)
+    Circle,      // Expands to Circle(Circle)
+    Rectangle,
+    Triangle,
 }
 
 // Implement the trait for each variant
@@ -135,14 +134,14 @@ assert_eq!(std::mem::size_of::<Shape>(), 8);
 
 ### Owned Mode (Default)
 
-Without lifetime parameters, generates owned tagged pointers using `Box`:
+Without lifetime parameters on the enum, generates owned tagged pointers using `Box`:
 - Variants are allocated with `Box::into_raw(Box::new(value))`
 - Implements `Drop` to deallocate
 - Has non-trivial `Clone` that deep-copies
 
 ### Arena Mode
 
-With lifetime parameters, generates arena-allocated pointers:
+With lifetime parameters on the enum, generates arena-allocated pointers:
 - Variants allocated through `TaggedAllocator` trait
 - Types are `Copy` (just copies the 8-byte pointer)
 - Arena manages object lifetimes
@@ -166,7 +165,7 @@ For high-performance scenarios, use arena allocation to get `Copy` types and eli
 
     #[tagged_dispatch(Process)]
     enum Processor<'a> {  // Note the lifetime parameter
-        Doubler,    // Simplified syntax
+        Doubler,
         Squarer,
     }
 
@@ -185,12 +184,12 @@ For high-performance scenarios, use arena allocation to get `Copy` types and eli
     // Create an arena builder
     let builder = Processor::arena_builder();
 
-    // Allocate variants in the arena - returns Copy types!
+    // Allocate variants in the arena
     let proc1 = builder.doubler(Doubler);
     let proc2 = builder.squarer(Squarer);
 
-    // These are Copy - just 8 bytes each!
-    let proc3 = proc1;  // Copied, not moved!
+    // These are Copy and 8 bytes each.
+    let proc3 = proc1;
 
     assert_eq!(proc1.process(5), 10);
     assert_eq!(proc2.process(5), 25);
@@ -373,19 +372,19 @@ This crate requires x86-64 or AArch64 architectures where the top 7 bits of 64-b
 ## Limitations
 
 - Supports up to 128 variant types (7-bit tag)
-- Generic traits are not yet supported
+- Generic traits are not supported
 - Requires heap allocation for variants (or arena allocation)
 - Only works on x86-64 and AArch64 architectures
 
 ## Safety
 
-This crate uses `unsafe` code for tagged pointer manipulation. All unsafe operations are carefully documented and tested.
+This crate uses `unsafe` code for tagged pointer manipulation. I've tried to carefully document and test all unsafe operations.
 
 ### Safety Invariants
 
 1. **Valid Pointers**: All pointers stored in `TaggedPtr` are valid, properly aligned, and point to initialized data
 2. **Tag Range**: Tags are always within the valid range (0-127), enforced by debug assertions
-3. **Memory Management**: Proper cleanup via `Drop` implementation ensures no memory leaks
+3. **Memory Management**: Proper cleanup via `Drop` implementation (in the default boxed implementation) ensures no memory leaks
 4. **Type Safety**: Type safety is enforced at compile time through the macro-generated code
 
 ### Unsafe Operations
@@ -408,7 +407,7 @@ The crate contains the following unsafe operations:
    - Safety: `TaggedPtr<T>` is `Send`/`Sync` if and only if `T` is `Send`/`Sync`
    - Preserves thread safety guarantees of the underlying types
 
-All unsafe code is contained within the library implementation and is not exposed to users. The macro-generated code ensures memory safety through careful pointer management and type checking.
+All unsafe code is contained within the library implementation and is not exposed to users.
 
 ## License
 
