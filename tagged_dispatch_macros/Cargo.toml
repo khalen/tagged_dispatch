@@ -1,0 +1,17 @@
+[package]
+name = "tagged_dispatch_macros"
+version = "0.1.0"
+authors = ["Jon Davis <khalen@gmail.com>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Proc macros for tagged_dispatch"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+heck = "0.4" # For case conversion
+

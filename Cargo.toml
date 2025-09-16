@@ -1,0 +1,46 @@
+[package]
+name = "tagged_dispatch"
+version = "0.1.0"
+authors = ["Jon Davis <khalen@gmail.com>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Memory efficient trait dispatch using tagged pointers."
+documentation = "https://docs.rs/tagged_dispatch"
+repository = "https://github.com/khalen/tagged_dispatch"
+keywords = ["dispatch", "polymorphism", "tagged-pointer", "performance"]
+categories = ["data-structures", "no-std", "memory-management"]
+
+[dependencies]
+tagged_dispatch_macros = { version = "0.1.0", path = "tagged_dispatch_macros" }
+
+# Optional allocator support
+bumpalo = { version = "3.14", optional = true }
+typed-arena = { version = "2.0", optional = true }
+
+[features]
+default = ["std"]
+std = []
+
+ # Enable specific allocator support
+allocator-bumpalo = ["bumpalo"]
+allocator-typed-arena = ["typed-arena"]
+
+# Convenience feature to enable all allocators
+all-allocators = ["allocator-bumpalo", "allocator-typed-arena"]
+ 
+[dev-dependencies]
+criterion = "0.5"
+static_assertions = "1.1"
+bumpalo = "3.14"            # For tests
+
+# [[bench]]
+# name = "dispatch_bench"
+# harness = false
+
+[workspace]
+members = [ "tagged_dispatch_macros" ]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
