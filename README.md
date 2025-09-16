@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/tagged_dispatch/badge.svg)](https://docs.rs/tagged_dispatch)
 [![License](https://img.shields.io/crates/l/tagged_dispatch.svg)](https://github.com/khalen/tagged_dispatch#license)
 
-Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but your enums are only 8 bytes on 64-bit systems, regardless of the variant size!
+Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but uses only 8 bytes per instance with heap-allocated variants instead of stack-allocated ones the size of the largest variant.
 
 ## Features
 
@@ -28,6 +28,13 @@ tagged_dispatch = "0.1"
 tagged_dispatch = { version = "0.1", features = ["allocator-bumpalo"] }
 ```
 
+### Feature Flags
+
+- `std` (default): Standard library support
+- `allocator-bumpalo`: Implements `TaggedAllocator` for `bumpalo::Bump`
+- `allocator-typed-arena`: Implements `TaggedAllocator` for `typed_arena::Arena<T>`
+- `all-allocators`: Enables all allocator implementations
+
 ## Quick Example
 
 ```rust
@@ -43,12 +50,13 @@ trait Draw {
 // Create an enum with variants that implement the trait
 #[tagged_dispatch(Draw)]
 enum Shape {
-    Circle(Circle),
-    Rectangle(Rectangle),
-    Triangle(Triangle),
+    Circle,      // Simplified syntax - automatically expands to Circle(Circle)
+    Rectangle,   // Expands to Rectangle(Rectangle)
+    Triangle,    // Expands to Triangle(Triangle)
 }
 
 // Implement the trait for each variant
+#[derive(Clone)]
 struct Circle { radius: f32 }
 
 impl Draw for Circle {
@@ -61,6 +69,7 @@ impl Draw for Circle {
     }
 }
 
+#[derive(Clone)]
 struct Rectangle { width: f32, height: f32 }
 
 impl Draw for Rectangle {
@@ -73,6 +82,7 @@ impl Draw for Rectangle {
     }
 }
 
+#[derive(Clone)]
 struct Triangle { base: f32, height: f32 }
 
 impl Draw for Triangle {
@@ -123,6 +133,23 @@ fn main() {
 - ✅ You're okay with 16-byte fat pointers
 - ✅ You need to work with external types you don't control
 
+## Memory Models
+
+### Owned Mode (Default)
+
+Without lifetime parameters, generates owned tagged pointers using `Box`:
+- Variants are allocated with `Box::into_raw(Box::new(value))`
+- Implements `Drop` to deallocate
+- Has non-trivial `Clone` that deep-copies
+
+### Arena Mode
+
+With lifetime parameters, generates arena-allocated pointers:
+- Variants allocated through `TaggedAllocator` trait
+- Types are `Copy` (just copies the 8-byte pointer)
+- Arena manages object lifetimes
+- Variants don't need to be `Send`, `Sync`, or even `Sized`
+
 ## Advanced Features
 
 ### Arena Allocation
@@ -141,15 +168,17 @@ For high-performance scenarios, use arena allocation to get `Copy` types and eli
 
     #[tagged_dispatch(Process)]
     enum Processor<'a> {  // Note the lifetime parameter
-        Doubler(Doubler),
-        Squarer(Squarer),
+        Doubler,    // Simplified syntax
+        Squarer,
     }
 
+    #[derive(Clone)]
     struct Doubler;
     impl Process for Doubler {
         fn process(&self, value: i32) -> i32 { value * 2 }
     }
 
+    #[derive(Clone)]
     struct Squarer;
     impl Process for Squarer {
         fn process(&self, value: i32) -> i32 { value * value }
@@ -175,7 +204,10 @@ For high-performance scenarios, use arena allocation to get `Copy` types and eli
 
 Dispatch multiple traits through the same enum:
 
-```rust
+```rust,ignore
+# // This example shows the syntax but requires complete type definitions
+use tagged_dispatch::tagged_dispatch;
+
 #[tagged_dispatch]
 trait Draw {
     fn draw(&self);
@@ -188,8 +220,8 @@ trait Serialize {
 
 #[tagged_dispatch(Draw, Serialize)]
 enum Shape {
-    Circle(Circle),
-    Rectangle(Rectangle),
+    Circle,      // Simplified syntax
+    Rectangle,
 }
 ```
 
@@ -197,7 +229,10 @@ enum Shape {
 
 Traits with default implementations work as expected:
 
-```rust
+```rust,ignore
+# // This example shows the syntax but requires complete type definitions
+use tagged_dispatch::tagged_dispatch;
+
 #[tagged_dispatch]
 trait Animal {
     fn make_sound(&self) -> &str;
@@ -212,7 +247,10 @@ trait Animal {
 
 Mark trait methods that shouldn't be dispatched with `#[no_dispatch]`:
 
-```rust
+```rust,ignore
+# // This example shows the syntax but requires complete type definitions
+use tagged_dispatch::tagged_dispatch;
+
 #[tagged_dispatch]
 trait MyTrait {
     fn dispatched(&self) -> i32;
@@ -241,12 +279,36 @@ This crate requires x86-64 or AArch64 architectures where the top 7 bits of 64-b
 
 ## Safety
 
-This crate uses `unsafe` code for tagged pointer manipulation. All unsafe operations are carefully documented and tested. The safety invariants are:
+This crate uses `unsafe` code for tagged pointer manipulation. All unsafe operations are carefully documented and tested.
 
-1. Pointers are always valid and properly aligned
-2. Tags are always within the valid range (0-127)
-3. Proper cleanup via `Drop` implementation
-4. Type safety enforced at compile time
+### Safety Invariants
+
+1. **Valid Pointers**: All pointers stored in `TaggedPtr` are valid, properly aligned, and point to initialized data
+2. **Tag Range**: Tags are always within the valid range (0-127), enforced by debug assertions
+3. **Memory Management**: Proper cleanup via `Drop` implementation ensures no memory leaks
+4. **Type Safety**: Type safety is enforced at compile time through the macro-generated code
+
+### Unsafe Operations
+
+The crate contains the following unsafe operations:
+
+1. **Pointer Dereferencing** (`TaggedPtr::as_ref`, `TaggedPtr::as_mut`):
+   - Safety: Caller must ensure the pointer is valid and properly initialized
+   - Used by generated dispatch code to access variant data
+
+2. **Memory Deallocation** (in generated `Drop` impl):
+   - Safety: Uses `untagged_ptr()` to ensure the original pointer is passed to `Box::from_raw`
+   - Prevents memory leaks by properly deallocating heap-allocated variants
+
+3. **Type Transmutation** (in generated code):
+   - Safety: Tag values are guaranteed to map to valid enum discriminants
+   - Used to convert between tag values and enum variant types
+
+4. **Send/Sync Implementation**:
+   - Safety: `TaggedPtr<T>` is `Send`/`Sync` if and only if `T` is `Send`/`Sync`
+   - Preserves thread safety guarantees of the underlying types
+
+All unsafe code is contained within the library implementation and is not exposed to users. The macro-generated code ensures memory safety through careful pointer management and type checking.
 
 ## License
 
