@@ -20,7 +20,11 @@ use proc_macro2::TokenStream as TokenStream2;
 
 /// Generate allocator match arms based on enabled features at macro build time
 fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Ident) -> TokenStream2 {
-    let mut arms: Vec<TokenStream2> = vec![];
+    #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
+    let mut arms = vec![];
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    let arms = vec![];
 
     // Add typed-arena arm if feature is enabled at macro build time
     #[cfg(feature = "allocator-typed-arena")]
@@ -43,6 +47,7 @@ fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Iden
 
     // If no allocators are enabled, generate a compile error
     if arms.is_empty() {
+        let _ = (field_name, ty, arena_type_name); // Suppress unused warnings
         quote! {
             _ => compile_error!("At least one allocator feature must be enabled (allocator-typed-arena or allocator-bumpalo)")
         }
@@ -53,7 +58,11 @@ fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Iden
 
 /// Generate arena enum definition based on enabled features
 fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_arena_fields: &[TokenStream2]) -> TokenStream2 {
-    let mut variants: Vec<TokenStream2> = vec![];
+    #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
+    let mut variants = vec![];
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    let variants = vec![];
 
     #[cfg(feature = "allocator-typed-arena")]
     variants.push(quote! {
@@ -73,6 +82,7 @@ fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_a
 
     // If no variants, the enum would be empty - generate compile error
     if variants.is_empty() {
+        let _ = typed_arena_fields; // Suppress unused warning
         quote! {
             compile_error!("At least one allocator feature must be enabled");
         }
@@ -113,7 +123,14 @@ fn generate_builder_methods(
     typed_arena_inits: &[TokenStream2],
     lifetime: &TokenStream2
 ) -> TokenStream2 {
-    let mut methods: Vec<TokenStream2> = vec![];
+    #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
+    let mut methods = vec![];
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    let methods = {
+        let _ = (builder_name, arena_type_name, typed_arena_inits, lifetime); // Suppress unused warnings
+        vec![]
+    };
 
     #[cfg(feature = "allocator-bumpalo")]
     methods.push(quote! {
@@ -165,7 +182,14 @@ fn generate_reset_impl(
     arena_type_name: &Ident,
     typed_arena_inits2: &[TokenStream2]
 ) -> TokenStream2 {
-    let mut arms: Vec<TokenStream2> = vec![];
+    #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
+    let mut arms = vec![];
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    let arms = {
+        let _ = (arena_type_name, typed_arena_inits2); // Suppress unused warnings
+        vec![]
+    };
 
     #[cfg(feature = "allocator-typed-arena")]
     arms.push(quote! {
@@ -199,7 +223,14 @@ fn generate_reset_impl(
 
 /// Generate stats implementation based on enabled features
 fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
-    let mut arms: Vec<TokenStream2> = vec![];
+    #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
+    let mut arms = vec![];
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    let arms = {
+        let _ = arena_type_name; // Suppress unused warning
+        vec![]
+    };
 
     #[cfg(feature = "allocator-typed-arena")]
     arms.push(quote! {
@@ -232,11 +263,11 @@ fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
 /// Attribute macro for traits that will be used with tagged dispatch.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// #[tagged_dispatch]
 /// trait Draw {
 ///     fn draw(&self);
-///     
+///
 ///     #[no_dispatch]
 ///     fn debug_name(&self) -> &str { "drawable" }
 /// }
