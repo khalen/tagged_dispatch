@@ -123,6 +123,11 @@ fn generate_builder_methods(
     typed_arena_inits: &[TokenStream2],
     lifetime: &TokenStream2
 ) -> TokenStream2 {
+    // Suppress unused warnings for parameters that might not be used depending on features
+    #[cfg(not(feature = "allocator-bumpalo"))]
+    let _ = (builder_name, lifetime);
+    #[cfg(not(feature = "allocator-typed-arena"))]
+    let _ = typed_arena_inits;
     #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
     let mut methods = vec![];
 
@@ -182,6 +187,9 @@ fn generate_reset_impl(
     arena_type_name: &Ident,
     typed_arena_inits2: &[TokenStream2]
 ) -> TokenStream2 {
+    // Suppress unused warnings for parameters that might not be used depending on features
+    #[cfg(not(feature = "allocator-typed-arena"))]
+    let _ = typed_arena_inits2;
     #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
     let mut arms = vec![];
 
