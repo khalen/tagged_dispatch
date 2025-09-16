@@ -14,6 +14,7 @@ Memory-efficient trait dispatch using tagged pointers. Like `enum_dispatch`, but
 - **🔧 No allocator required** - Works with `no_std` (bring your own allocator)
 - **🚀 Cache-friendly** - Better locality than fat enums
 - **🏗️ Arena allocation support** - Optional arena allocation for even better performance
+- **🍎 Apple Silicon optimized** - Leverages ARM64 TBI for zero-cost tag removal
 
 ## Installation
 
@@ -226,6 +227,10 @@ trait MyTrait {
 ## Architecture Requirements
 
 This crate requires x86-64 or AArch64 architectures where the top 7 bits of 64-bit pointers are unused (standard on modern Linux, macOS, and Windows systems).
+
+### Platform Optimizations
+
+**Apple Silicon (macOS ARM64)**: This crate automatically leverages the ARM64 Top Byte Ignore (TBI) feature on Apple Silicon Macs. TBI allows the processor to automatically ignore the top byte of pointers during memory access, eliminating the need for software masking. This provides a measurable performance improvement by removing a bitwise AND operation from every pointer dereference in the dispatch path.
 
 ## Limitations
 

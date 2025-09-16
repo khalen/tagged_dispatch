@@ -216,7 +216,9 @@ fn generate_owned_impl(
         let tag = i as u8;
         quote! {
             #tag => {
-                let ptr = self.0.ptr() as *mut #ty;
+                // Use untagged_ptr() for deallocation to ensure we pass
+                // the original pointer to Box::from_raw
+                let ptr = self.0.untagged_ptr() as *mut #ty;
                 drop(Box::from_raw(ptr));
             }
         }
@@ -228,6 +230,7 @@ fn generate_owned_impl(
         let tag = i as u8;
         quote! {
             #tag => {
+                // Use ptr() which benefits from TBI on supported platforms
                 let ptr = self.0.ptr() as *const #ty;
                 let cloned = (*ptr).clone();
                 Self::#method_name(cloned)

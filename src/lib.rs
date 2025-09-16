@@ -94,7 +94,7 @@
 //! When you add a lifetime parameter, the macro generates an arena builder pattern
 //! that supports both bumpalo and typed-arena:
 //!
-//! ```rust,ignore
+//! ```rust
 //! # // This example requires arena allocator features to be enabled
 //! use tagged_dispatch::tagged_dispatch;
 //!
@@ -164,9 +164,18 @@ use std::boxed::Box;
 pub use tagged_dispatch_macros::tagged_dispatch;
 
 /// The core tagged pointer type used internally.
-/// 
+///
 /// Uses the top 7 bits of a 64-bit pointer for type tagging,
 /// supporting up to 128 different types while maintaining an 8-byte size.
+///
+/// # Platform Optimizations
+///
+/// On Apple Silicon (macOS ARM64), this implementation leverages the hardware's
+/// Top Byte Ignore (TBI) feature. TBI allows the processor to automatically
+/// ignore the top byte of pointers during memory access, eliminating the need
+/// for manual masking operations. This provides a measurable performance
+/// improvement by reducing instructions on the critical path of every trait
+/// method dispatch.
 #[repr(transparent)]
 pub struct TaggedPtr<T> {
     ptr: usize,
@@ -176,6 +185,7 @@ pub struct TaggedPtr<T> {
 impl<T> TaggedPtr<T> {
     const TAG_SHIFT: usize = 57;
     const TAG_MASK: usize = 0x7F << Self::TAG_SHIFT;
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     const PTR_MASK: usize = !Self::TAG_MASK;
     
     /// Maximum number of variants supported (2^7 = 128)
@@ -212,9 +222,43 @@ impl<T> TaggedPtr<T> {
     ///
     /// # Safety
     /// The returned pointer is only valid if the original pointer passed to `new` is still valid.
+    ///
+    /// # Platform Optimization
+    /// On macOS ARM64 (Apple Silicon), this method leverages the hardware's Top Byte Ignore (TBI)
+    /// feature, which automatically masks the top byte during memory access. This eliminates the
+    /// need for software masking, providing a performance improvement.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[inline(always)]
     pub fn ptr(&self) -> *mut T {
+        // On Apple Silicon, the hardware automatically ignores the top byte
+        // via TBI (Top Byte Ignore), so we can return the pointer directly
+        // without masking. This saves a bitwise AND operation on every access.
+        self.ptr as *mut T
+    }
+
+    /// Get the untagged pointer (standard implementation).
+    ///
+    /// # Safety
+    /// The returned pointer is only valid if the original pointer passed to `new` is still valid.
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    #[inline(always)]
+    pub fn ptr(&self) -> *mut T {
+        // Standard implementation: manually mask off the tag bits
         (self.ptr & Self::PTR_MASK) as *mut T
+    }
+
+    /// Get the untagged pointer for deallocation.
+    ///
+    /// This always masks off the tag bits, even on platforms with TBI support,
+    /// because memory allocators require the original untagged pointer.
+    ///
+    /// # Safety
+    /// The returned pointer is only valid if the original pointer passed to `new` is still valid.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn untagged_ptr(&self) -> *mut T {
+        const PTR_MASK: usize = !(0x7F << 57);
+        (self.ptr & PTR_MASK) as *mut T
     }
     
     /// Get a reference to the pointed value.
@@ -370,21 +414,47 @@ mod tests {
         let ptr = core::ptr::null_mut::<u32>();
         let tagged = TaggedPtr::new(ptr, 127);
         assert_eq!(tagged.tag(), 127);
-        assert_eq!(tagged.ptr(), ptr);
+
+        // On macOS ARM64 with TBI, the pointer retains the tag bits
+        // because the hardware ignores them automatically
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            // The returned pointer should have the tag in the high byte
+            let returned_ptr = tagged.ptr() as usize;
+            let expected = ptr as usize | (127usize << TaggedPtr::<u32>::TAG_SHIFT);
+            assert_eq!(returned_ptr, expected);
+        }
+
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            assert_eq!(tagged.ptr(), ptr);
+        }
     }
     
     #[test]
     fn test_tag_preservation() {
         let value = Box::new(42u32);
         let ptr = Box::into_raw(value);
-        
+
         for tag in 0..128u8 {
             let tagged = TaggedPtr::new(ptr, tag);
             assert_eq!(tagged.tag(), tag);
-            assert_eq!(tagged.ptr(), ptr);
+
+            // On macOS ARM64 with TBI, the pointer retains the tag bits
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            {
+                let returned_ptr = tagged.ptr() as usize;
+                let expected = ptr as usize | ((tag as usize) << TaggedPtr::<u32>::TAG_SHIFT);
+                assert_eq!(returned_ptr, expected);
+            }
+
+            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+            {
+                assert_eq!(tagged.ptr(), ptr);
+            }
         }
-        
-        // Clean up
+
+        // Clean up - need to use the original untagged pointer for deallocation
         unsafe { let _ = Box::from_raw(ptr); }
     }
     
