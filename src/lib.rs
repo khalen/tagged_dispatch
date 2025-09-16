@@ -71,11 +71,13 @@
 //!     Rectangle,   // Expands to Rectangle(Rectangle)
 //! }
 //!
+//! #[derive(Clone)]
 //! struct Circle { radius: f32 }
 //! impl Draw for Circle {
 //!     fn draw(&self) { println!("Drawing circle"); }
 //! }
 //!
+//! #[derive(Clone)]
 //! struct Rectangle { width: f32, height: f32 }
 //! impl Draw for Rectangle {
 //!     fn draw(&self) { println!("Drawing rectangle"); }
@@ -92,8 +94,14 @@
 //! When you add a lifetime parameter, the macro generates an arena builder pattern
 //! that supports both bumpalo and typed-arena:
 //!
-//! ```rust
+//! ```rust,ignore
+//! # // This example requires arena allocator features to be enabled
 //! use tagged_dispatch::tagged_dispatch;
+//!
+//! #[tagged_dispatch]
+//! trait Draw {
+//!     fn draw(&self);
+//! }
 //!
 //! #[tagged_dispatch(Draw)]
 //! enum ArenaShape<'a> { // Triggers generation of arena builder
@@ -101,6 +109,20 @@
 //!     Rectangle,
 //! }
 //!
+//! #[derive(Clone)]
+//! struct Circle { radius: f32 }
+//! impl Draw for Circle {
+//!     fn draw(&self) { println!("Drawing circle"); }
+//! }
+//!
+//! #[derive(Clone)]
+//! struct Rectangle { width: f32, height: f32 }
+//! impl Draw for Rectangle {
+//!     fn draw(&self) { println!("Drawing rectangle"); }
+//! }
+//!
+//! # #[cfg(any(feature = "allocator-bumpalo", feature = "allocator-typed-arena"))]
+//! # {
 //! // Create a builder (automatically chooses best allocator)
 //! let builder = ArenaShape::arena_builder();
 //! let shape = builder.circle(Circle { radius: 1.0 });
@@ -123,6 +145,7 @@
 //! // Reset allocations for batch processing
 //! let mut builder = ArenaShape::arena_builder();
 //! builder.reset(); // Invalidates all previous allocations
+//! # }
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
