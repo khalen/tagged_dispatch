@@ -95,23 +95,21 @@ impl Draw for Triangle {
     }
 }
 
-fn main() {
-    // Create shapes using generated constructors
-    let shapes = vec![
-        Shape::circle(Circle { radius: 5.0 }),
-        Shape::rectangle(Rectangle { width: 10.0, height: 5.0 }),
-        Shape::triangle(Triangle { base: 8.0, height: 6.0 }),
-    ];
+// Create shapes using generated constructors
+let shapes = vec![
+    Shape::circle(Circle { radius: 5.0 }),
+    Shape::rectangle(Rectangle { width: 10.0, height: 5.0 }),
+    Shape::triangle(Triangle { base: 8.0, height: 6.0 }),
+];
 
-    // Dispatch trait methods
-    for shape in &shapes {
-        shape.draw();
-        println!("Area: {}", shape.area());
-    }
-
-    // Only 8 bytes per enum, not size_of::<largest variant>()!
-    assert_eq!(std::mem::size_of::<Shape>(), 8);
+// Dispatch trait methods
+for shape in &shapes {
+    shape.draw();
+    println!("Area: {}", shape.area());
 }
+
+// Only 8 bytes per enum, not size_of::<largest variant>()!
+assert_eq!(std::mem::size_of::<Shape>(), 8);
 ```
 
 ## When to Use
