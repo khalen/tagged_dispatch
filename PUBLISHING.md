@@ -66,9 +66,6 @@ git push origin main --tags
 cargo publish
 ```
 
-## Known Issues
-
-⚠️ **Arena tests segfault**: The `arena_builder.rs` test has a segmentation fault with the bumpalo feature. This should be fixed before a production release, but the core functionality works fine.
 
 ## Post-Publishing
 
