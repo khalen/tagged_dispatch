@@ -34,13 +34,14 @@ pub struct TaggedPtr<T> {
 }
 
 impl<T> TaggedPtr<T> {
-    const TAG_SHIFT: usize = 57;
-    const TAG_MASK: usize = 0x7F << Self::TAG_SHIFT;
+    const TAG_BITS: usize = 7;
+    const TAG_SHIFT: usize = 64 - Self::TAG_BITS;
+    const TAG_MASK: usize = ((1 << Self::TAG_BITS) - 1) << Self::TAG_SHIFT;
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     const PTR_MASK: usize = !Self::TAG_MASK;
     
     /// Maximum number of variants supported (2^7 = 128)
-    pub const MAX_VARIANTS: usize = 128;
+    pub const MAX_VARIANTS: usize = 1 << Self::TAG_BITS;
     
     /// Create a new tagged pointer
     #[inline(always)]
@@ -81,9 +82,6 @@ impl<T> TaggedPtr<T> {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[inline(always)]
     pub fn ptr(&self) -> *mut T {
-        // On Apple Silicon, the hardware automatically ignores the top byte
-        // via TBI (Top Byte Ignore), so we can return the pointer directly
-        // without masking. This saves a bitwise AND operation on every access.
         self.ptr as *mut T
     }
 

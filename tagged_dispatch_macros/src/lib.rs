@@ -580,7 +580,7 @@ fn generate_arena_impl(
             }
         }
 
-        // Arena version is Copy!
+        // Arena version is Copy
         impl<#lifetime> Copy for #enum_name<#lifetime> {}
 
         impl<#lifetime> Clone for #enum_name<#lifetime> {
