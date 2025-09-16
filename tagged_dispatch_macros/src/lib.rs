@@ -26,7 +26,6 @@ fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Iden
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
     let arms: Vec<TokenStream2> = vec![];
 
-    // Add typed-arena arm if feature is enabled at macro build time
     #[cfg(feature = "allocator-typed-arena")]
     arms.push(quote! {
         #arena_type_name::Typed { #field_name, .. } => {
@@ -34,7 +33,6 @@ fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Iden
         }
     });
 
-    // Add bumpalo arm if feature is enabled at macro build time
     #[cfg(feature = "allocator-bumpalo")]
     arms.push(quote! {
         #arena_type_name::Bumpalo { arena, .. } => {
@@ -82,7 +80,7 @@ fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_a
 
     // If no variants, the enum would be empty - generate compile error
     if variants.is_empty() {
-        let _ = typed_arena_fields; // Suppress unused warning
+        let _ = typed_arena_fields;
         quote! {
             compile_error!("At least one allocator feature must be enabled");
         }
@@ -123,7 +121,6 @@ fn generate_builder_methods(
     typed_arena_inits: &[TokenStream2],
     lifetime: &TokenStream2
 ) -> TokenStream2 {
-    // Suppress unused warnings for parameters that might not be used depending on features
     #[cfg(not(feature = "allocator-bumpalo"))]
     let _ = (builder_name, lifetime);
     #[cfg(not(feature = "allocator-typed-arena"))]
@@ -133,7 +130,7 @@ fn generate_builder_methods(
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
     let methods: Vec<TokenStream2> = {
-        let _ = (builder_name, arena_type_name, typed_arena_inits, lifetime); // Suppress unused warnings
+        let _ = (builder_name, arena_type_name, typed_arena_inits, lifetime);
         vec![]
     };
 
@@ -141,7 +138,8 @@ fn generate_builder_methods(
     methods.push(quote! {
         /// Create a builder with owned bumpalo arena
         pub fn with_bumpalo() -> #builder_name<'static> {
-            // Use a leaked Box to get 'static lifetime for owned arena
+            // Use a leaked Box to get 'static lifetime for owned arena - is there a better way to
+            // do this? Maybe a OnceCell?
             let arena = Box::leak(Box::new(::bumpalo::Bump::new()));
             #builder_name {
                 allocator: #arena_type_name::Bumpalo {
@@ -187,7 +185,6 @@ fn generate_reset_impl(
     arena_type_name: &Ident,
     typed_arena_inits2: &[TokenStream2]
 ) -> TokenStream2 {
-    // Suppress unused warnings for parameters that might not be used depending on features
     #[cfg(not(feature = "allocator-typed-arena"))]
     let _ = typed_arena_inits2;
     #[cfg(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo"))]
@@ -195,7 +192,7 @@ fn generate_reset_impl(
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
     let arms: Vec<TokenStream2> = {
-        let _ = (arena_type_name, typed_arena_inits2); // Suppress unused warnings
+        let _ = (arena_type_name, typed_arena_inits2); 
         vec![]
     };
 
@@ -236,7 +233,7 @@ fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
     let arms: Vec<TokenStream2> = {
-        let _ = arena_type_name; // Suppress unused warning
+        let _ = arena_type_name;
         vec![]
     };
 
@@ -317,7 +314,7 @@ fn process_trait(mut trait_def: ItemTrait) -> TokenStream {
         }
     }).collect();
     
-    // Clean the trait definition (remove no_dispatch attributes)
+    // Remove #[no_dispatch] trait members
     for item in &mut trait_def.items {
         if let TraitItem::Fn(method) = item {
             method.attrs.retain(|attr| !attr.path().is_ident("no_dispatch"));
@@ -420,7 +417,7 @@ fn process_enum_variants(data_enum: &mut DataEnum) -> Vec<(Ident, Type)> {
                 (variant.ident.clone(), inner_type)
             }
             _ => {
-                panic!("Each variant must either be a unit variant (shorthand) or have exactly one unnamed field");
+                panic!("Each variant must either be a unit variant or have exactly one unnamed field");
             }
         }
     }).collect()
@@ -525,7 +522,7 @@ fn generate_owned_impl(
     });
     
     let output = quote! {
-        /// Tagged pointer dispatch type - only 8 bytes!
+        /// Tagged pointer dispatch type
         #[repr(transparent)]
         #vis struct #enum_name(::tagged_dispatch::TaggedPtr<()>);
         
@@ -686,7 +683,7 @@ fn generate_arena_impl(
     let stats_impl = generate_stats_impl(&arena_type_name);
 
     let output = quote! {
-        /// Arena-allocated tagged pointer dispatch type - only 8 bytes and Copy!
+        /// Arena-allocated tagged pointer dispatch type
         #[repr(transparent)]
         #vis struct #enum_name<#lifetime>(
             ::tagged_dispatch::TaggedPtr<()>,
