@@ -14,6 +14,220 @@ use syn::{
     Type,
 };
 use heck::ToSnakeCase;
+use proc_macro2::TokenStream as TokenStream2;
+
+// Helper functions for conditional code generation based on features
+
+/// Generate allocator match arms based on enabled features at macro build time
+fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Ident) -> TokenStream2 {
+    let mut arms: Vec<TokenStream2> = vec![];
+
+    // Add typed-arena arm if feature is enabled at macro build time
+    #[cfg(feature = "allocator-typed-arena")]
+    arms.push(quote! {
+        #arena_type_name::Typed { #field_name, .. } => {
+            #field_name.alloc(value) as *mut #ty as *mut ()
+        }
+    });
+
+    // Add bumpalo arm if feature is enabled at macro build time
+    #[cfg(feature = "allocator-bumpalo")]
+    arms.push(quote! {
+        #arena_type_name::Bumpalo { arena, .. } => {
+            unsafe {
+                let arena_ref = &**arena;
+                arena_ref.alloc(value) as *mut #ty as *mut ()
+            }
+        }
+    });
+
+    // If no allocators are enabled, generate a compile error
+    if arms.is_empty() {
+        quote! {
+            _ => compile_error!("At least one allocator feature must be enabled (allocator-typed-arena or allocator-bumpalo)")
+        }
+    } else {
+        quote! { #(#arms)* }
+    }
+}
+
+/// Generate arena enum definition based on enabled features
+fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_arena_fields: &[TokenStream2]) -> TokenStream2 {
+    let mut variants: Vec<TokenStream2> = vec![];
+
+    #[cfg(feature = "allocator-typed-arena")]
+    variants.push(quote! {
+        Typed {
+            #(#typed_arena_fields,)*
+        }
+    });
+
+    #[cfg(feature = "allocator-bumpalo")]
+    variants.push(quote! {
+        Bumpalo {
+            arena: *mut ::bumpalo::Bump,
+            owned: bool,
+            _phantom: ::core::marker::PhantomData<&#lifetime ()>,
+        }
+    });
+
+    // If no variants, the enum would be empty - generate compile error
+    if variants.is_empty() {
+        quote! {
+            compile_error!("At least one allocator feature must be enabled");
+        }
+    } else {
+        quote! {
+            /// Internal arena type enum
+            #[doc(hidden)]
+            enum #arena_type_name<#lifetime> {
+                #(#variants,)*
+            }
+        }
+    }
+}
+
+/// Generate builder constructor implementation based on enabled features
+fn generate_builder_new() -> TokenStream2 {
+    // Prefer bumpalo if available, fall back to typed-arena
+    #[cfg(feature = "allocator-bumpalo")]
+    return quote! {
+        Self::with_bumpalo()
+    };
+
+    #[cfg(all(feature = "allocator-typed-arena", not(feature = "allocator-bumpalo")))]
+    return quote! {
+        Self::with_typed_arena()
+    };
+
+    #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
+    quote! {
+        compile_error!("At least one allocator feature must be enabled (allocator-typed-arena or allocator-bumpalo)")
+    }
+}
+
+/// Generate builder methods for specific allocators
+fn generate_builder_methods(
+    builder_name: &Ident,
+    arena_type_name: &Ident,
+    typed_arena_inits: &[TokenStream2],
+    lifetime: &TokenStream2
+) -> TokenStream2 {
+    let mut methods: Vec<TokenStream2> = vec![];
+
+    #[cfg(feature = "allocator-bumpalo")]
+    methods.push(quote! {
+        /// Create a builder with owned bumpalo arena
+        pub fn with_bumpalo() -> #builder_name<'static> {
+            // Use a leaked Box to get 'static lifetime for owned arena
+            let arena = Box::leak(Box::new(::bumpalo::Bump::new()));
+            #builder_name {
+                allocator: #arena_type_name::Bumpalo {
+                    arena: arena as *mut _,
+                    owned: true,
+                    _phantom: ::core::marker::PhantomData,
+                },
+                _phantom: ::core::marker::PhantomData,
+            }
+        }
+
+        /// Create a builder with external bumpalo arena
+        pub fn with_external_bumpalo(arena: &#lifetime ::bumpalo::Bump) -> Self {
+            Self {
+                allocator: #arena_type_name::Bumpalo {
+                    arena: arena as *const _ as *mut _,
+                    owned: false,
+                    _phantom: ::core::marker::PhantomData,
+                },
+                _phantom: ::core::marker::PhantomData,
+            }
+        }
+    });
+
+    #[cfg(feature = "allocator-typed-arena")]
+    methods.push(quote! {
+        /// Create a builder with typed arenas
+        pub fn with_typed_arena() -> Self {
+            Self {
+                allocator: #arena_type_name::Typed {
+                    #(#typed_arena_inits,)*
+                },
+                _phantom: ::core::marker::PhantomData,
+            }
+        }
+    });
+
+    quote! { #(#methods)* }
+}
+
+/// Generate reset implementation based on enabled features
+fn generate_reset_impl(
+    arena_type_name: &Ident,
+    typed_arena_inits2: &[TokenStream2]
+) -> TokenStream2 {
+    let mut arms: Vec<TokenStream2> = vec![];
+
+    #[cfg(feature = "allocator-typed-arena")]
+    arms.push(quote! {
+        #arena_type_name::Typed { .. } => {
+            // typed_arena doesn't support reset, must create new arenas
+            self.allocator = #arena_type_name::Typed {
+                #(#typed_arena_inits2,)*
+            };
+        }
+    });
+
+    #[cfg(feature = "allocator-bumpalo")]
+    arms.push(quote! {
+        #arena_type_name::Bumpalo { arena, owned: true, .. } => {
+            // SAFETY: We know this is safe because we own the arena
+            unsafe {
+                (&mut **arena).reset();
+            }
+        }
+        #arena_type_name::Bumpalo { owned: false, .. } => {
+            panic!("Cannot reset builder using external arena");
+        }
+    });
+
+    quote! {
+        match &mut self.allocator {
+            #(#arms)*
+        }
+    }
+}
+
+/// Generate stats implementation based on enabled features
+fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
+    let mut arms: Vec<TokenStream2> = vec![];
+
+    #[cfg(feature = "allocator-typed-arena")]
+    arms.push(quote! {
+        #arena_type_name::Typed { .. } => {
+            // typed_arena doesn't expose statistics
+            Default::default()
+        }
+    });
+
+    #[cfg(feature = "allocator-bumpalo")]
+    arms.push(quote! {
+        #arena_type_name::Bumpalo { arena, .. } => {
+            unsafe {
+                let arena_ref = &**arena;
+                ::tagged_dispatch::ArenaStats {
+                    allocated_bytes: arena_ref.allocated_bytes(),
+                    chunk_capacity: arena_ref.chunk_capacity(),
+                }
+            }
+        }
+    });
+
+    quote! {
+        match &self.allocator {
+            #(#arms)*
+        }
+    }
+}
 
 /// Attribute macro for traits that will be used with tagged dispatch.
 ///
@@ -366,23 +580,15 @@ fn generate_arena_impl(
         let method_name = format_ident!("{}", variant.to_string().to_snake_case());
         let field_name = format_ident!("{}_arena", variant.to_string().to_snake_case());
 
+        // Generate allocator match arms based on enabled features at macro build time
+        let allocator_arms = generate_allocator_arms(&field_name, ty, &arena_type_name);
+
         quote! {
             #[doc = concat!("Create a `", stringify!(#variant), "` variant in the arena")]
             #[inline]
             pub fn #method_name(&#lifetime self, value: #ty) -> #enum_name<#lifetime> {
                 let ptr = match &self.allocator {
-                    #[cfg(feature = "allocator-typed-arena")]
-                    #arena_type_name::Typed { #field_name, .. } => {
-                        #field_name.alloc(value) as *mut #ty as *mut ()
-                    }
-
-                    #[cfg(feature = "allocator-bumpalo")]
-                    #arena_type_name::Bumpalo { arena, .. } => {
-                        unsafe {
-                            let arena_ref = &**arena;
-                            arena_ref.alloc(value) as *mut #ty as *mut ()
-                        }
-                    }
+                    #allocator_arms
                 };
 
                 #enum_name(::tagged_dispatch::TaggedPtr::new(ptr, #tag), ::core::marker::PhantomData)
@@ -423,6 +629,23 @@ fn generate_arena_impl(
         })
     });
 
+    // Generate the arena enum definition based on enabled features
+    // Convert lifetime to TokenStream2
+    let lifetime_tokens = quote! { #lifetime };
+    let arena_enum_definition = generate_arena_enum(&arena_type_name, &lifetime_tokens, &typed_arena_fields);
+
+    // Generate builder new implementation
+    let builder_new_impl = generate_builder_new();
+
+    // Generate builder methods
+    let builder_specific_methods = generate_builder_methods(&builder_name, &arena_type_name, &typed_arena_inits, &lifetime_tokens);
+
+    // Generate reset implementation
+    let reset_impl = generate_reset_impl(&arena_type_name, &typed_arena_inits2);
+
+    // Generate stats implementation
+    let stats_impl = generate_stats_impl(&arena_type_name);
+
     let output = quote! {
         /// Arena-allocated tagged pointer dispatch type - only 8 bytes and Copy!
         #[repr(transparent)]
@@ -438,21 +661,8 @@ fn generate_arena_impl(
             #(#enum_variants,)*
         }
 
-        /// Internal arena type enum
-        #[doc(hidden)]
-        enum #arena_type_name<#lifetime> {
-            #[cfg(feature = "allocator-typed-arena")]
-            Typed {
-                #(#typed_arena_fields,)*
-            },
-
-            #[cfg(feature = "allocator-bumpalo")]
-            Bumpalo {
-                arena: *mut ::bumpalo::Bump,
-                owned: bool,
-                _phantom: ::core::marker::PhantomData<&#lifetime ()>,
-            },
-        }
+        // Generate arena type enum based on enabled features at macro build time
+        #arena_enum_definition
 
         /// Arena builder for creating arena-allocated variants
         #vis struct #builder_name<#lifetime> {
@@ -464,79 +674,14 @@ fn generate_arena_impl(
             /// Create a new builder with the default allocator
             /// (prefers bumpalo if available)
             pub fn new() -> Self {
-                #[cfg(feature = "allocator-bumpalo")]
-                return Self::with_bumpalo();
-
-                #[cfg(all(feature = "allocator-typed-arena", not(feature = "allocator-bumpalo")))]
-                return Self::with_typed_arena();
-
-                #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-                compile_error!("At least one allocator feature must be enabled (allocator-typed-arena or allocator-bumpalo)");
+                #builder_new_impl
             }
 
-            /// Create a builder with owned bumpalo arena
-            #[cfg(feature = "allocator-bumpalo")]
-            pub fn with_bumpalo() -> #builder_name<'static> {
-                // Use a leaked Box to get 'static lifetime for owned arena
-                let arena = Box::leak(Box::new(::bumpalo::Bump::new()));
-                #builder_name {
-                    allocator: #arena_type_name::Bumpalo {
-                        arena: arena as *mut _,
-                        owned: true,
-                        _phantom: ::core::marker::PhantomData,
-                    },
-                    _phantom: ::core::marker::PhantomData,
-                }
-            }
-
-            /// Create a builder with external bumpalo arena
-            #[cfg(feature = "allocator-bumpalo")]
-            pub fn with_external_bumpalo(arena: &#lifetime ::bumpalo::Bump) -> Self {
-                Self {
-                    allocator: #arena_type_name::Bumpalo {
-                        arena: arena as *const _ as *mut _,
-                        owned: false,
-                        _phantom: ::core::marker::PhantomData,
-                    },
-                    _phantom: ::core::marker::PhantomData,
-                }
-            }
-
-            /// Create a builder with typed arenas
-            #[cfg(feature = "allocator-typed-arena")]
-            pub fn with_typed_arena() -> Self {
-                Self {
-                    allocator: #arena_type_name::Typed {
-                        #(#typed_arena_inits,)*
-                    },
-                    _phantom: ::core::marker::PhantomData,
-                }
-            }
+            #builder_specific_methods
 
             /// Reset all allocations
             pub fn reset(&mut self) {
-                match &mut self.allocator {
-                    #[cfg(feature = "allocator-typed-arena")]
-                    #arena_type_name::Typed { .. } => {
-                        // typed_arena doesn't support reset, must create new arenas
-                        self.allocator = #arena_type_name::Typed {
-                            #(#typed_arena_inits2,)*
-                        };
-                    }
-
-                    #[cfg(feature = "allocator-bumpalo")]
-                    #arena_type_name::Bumpalo { arena, owned: true, .. } => {
-                        // SAFETY: We know this is safe because we own the arena
-                        unsafe {
-                            (&mut **arena).reset();
-                        }
-                    }
-
-                    #[cfg(feature = "allocator-bumpalo")]
-                    #arena_type_name::Bumpalo { owned: false, .. } => {
-                        panic!("Cannot reset builder using external arena");
-                    }
-                }
+                #reset_impl
             }
 
             /// Clear allocations and reclaim memory
@@ -546,23 +691,7 @@ fn generate_arena_impl(
 
             /// Get memory usage statistics
             pub fn stats(&self) -> ::tagged_dispatch::ArenaStats {
-                match &self.allocator {
-                    #[cfg(feature = "allocator-typed-arena")]
-                    #arena_type_name::Typed { .. } => {
-                        // typed_arena doesn't expose statistics
-                        ::tagged_dispatch::ArenaStats::default()
-                    }
-
-                    #[cfg(feature = "allocator-bumpalo")]
-                    #arena_type_name::Bumpalo { arena, .. } => {
-                        unsafe {
-                            ::tagged_dispatch::ArenaStats {
-                                allocated_bytes: (&**arena).allocated_bytes(),
-                                chunk_capacity: (&**arena).chunk_capacity(),
-                            }
-                        }
-                    }
-                }
+                #stats_impl
             }
 
             #(#builder_methods)*

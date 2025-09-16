@@ -12,7 +12,7 @@ keywords = ["dispatch", "polymorphism", "tagged-pointer", "performance"]
 categories = ["data-structures", "no-std", "memory-management"]
 
 [dependencies]
-tagged_dispatch_macros = { version = "0.1.3", path = "tagged_dispatch_macros" }
+tagged_dispatch_macros = { version = "0.1.3", path = "tagged_dispatch_macros", default-features = false }
 
 # Optional allocator support
 bumpalo = { version = "3.14", optional = true }
@@ -23,8 +23,8 @@ default = ["std"]
 std = []
 
  # Enable specific allocator support
-allocator-bumpalo = ["bumpalo"]
-allocator-typed-arena = ["typed-arena"]
+allocator-bumpalo = ["bumpalo", "tagged_dispatch_macros/allocator-bumpalo"]
+allocator-typed-arena = ["typed-arena", "tagged_dispatch_macros/allocator-typed-arena"]
 
 # Convenience feature to enable all allocators
 all-allocators = ["allocator-bumpalo", "allocator-typed-arena"]

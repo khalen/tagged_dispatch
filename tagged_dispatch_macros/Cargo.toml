@@ -18,3 +18,9 @@ quote = "1.0"
 proc-macro2 = "1.0"
 heck = "0.4" # For case conversion
 
+[features]
+default = []
+# Mirror the allocator features from the main crate
+allocator-bumpalo = []
+allocator-typed-arena = []
+
