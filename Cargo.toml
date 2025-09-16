@@ -15,8 +15,8 @@ categories = ["data-structures", "no-std", "memory-management"]
 tagged_dispatch_macros = { version = "0.2.0", path = "tagged_dispatch_macros", default-features = false }
 
 # Optional allocator support
-bumpalo = { version = "*", optional = true }
-typed-arena = { version = "*", optional = true }
+bumpalo = { version = "3.14", optional = true }
+typed-arena = { version = "2.0", optional = true }
 
 [features]
 default = ["std"]
