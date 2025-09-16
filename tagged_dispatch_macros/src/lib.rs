@@ -24,7 +24,7 @@ fn generate_allocator_arms(field_name: &Ident, ty: &Type, arena_type_name: &Iden
     let mut arms = vec![];
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-    let arms = vec![];
+    let arms: Vec<TokenStream2> = vec![];
 
     // Add typed-arena arm if feature is enabled at macro build time
     #[cfg(feature = "allocator-typed-arena")]
@@ -62,7 +62,7 @@ fn generate_arena_enum(arena_type_name: &Ident, lifetime: &TokenStream2, typed_a
     let mut variants = vec![];
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-    let variants = vec![];
+    let variants: Vec<TokenStream2> = vec![];
 
     #[cfg(feature = "allocator-typed-arena")]
     variants.push(quote! {
@@ -127,7 +127,7 @@ fn generate_builder_methods(
     let mut methods = vec![];
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-    let methods = {
+    let methods: Vec<TokenStream2> = {
         let _ = (builder_name, arena_type_name, typed_arena_inits, lifetime); // Suppress unused warnings
         vec![]
     };
@@ -186,7 +186,7 @@ fn generate_reset_impl(
     let mut arms = vec![];
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-    let arms = {
+    let arms: Vec<TokenStream2> = {
         let _ = (arena_type_name, typed_arena_inits2); // Suppress unused warnings
         vec![]
     };
@@ -227,7 +227,7 @@ fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
     let mut arms = vec![];
 
     #[cfg(not(any(feature = "allocator-typed-arena", feature = "allocator-bumpalo")))]
-    let arms = {
+    let arms: Vec<TokenStream2> = {
         let _ = arena_type_name; // Suppress unused warning
         vec![]
     };
