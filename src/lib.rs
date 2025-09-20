@@ -167,6 +167,29 @@ impl<T> core::fmt::Debug for TaggedPtr<T> {
     }
 }
 
+impl<T> core::cmp::PartialEq for TaggedPtr<T> {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare the raw pointer values (tag + address)
+        self.ptr == other.ptr
+    }
+}
+
+impl<T> core::cmp::Eq for TaggedPtr<T> {}
+
+impl<T> core::cmp::PartialOrd for TaggedPtr<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> core::cmp::Ord for TaggedPtr<T> {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // Compare the raw pointer values (tag is in high bits, so this
+        // naturally orders by tag first, then by address)
+        self.ptr.cmp(&other.ptr)
+    }
+}
+
 /// Allocator trait for arena-allocated tagged pointers.
 ///
 /// This trait should be implemented by arena allocators to enable

@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "tagged_dispatch"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "bumpalo",
  "criterion",
@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "tagged_dispatch_macros"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "heck",
  "proc-macro2",

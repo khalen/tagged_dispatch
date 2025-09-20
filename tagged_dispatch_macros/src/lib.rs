@@ -265,9 +265,9 @@ fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
     }
 }
 
-/// Attribute macro for traits that will be used with tagged dispatch.
+/// Attribute macro for traits and enums to enable tagged pointer dispatch.
 ///
-/// # Example
+/// # For Traits
 /// ```ignore
 /// #[tagged_dispatch]
 /// trait Draw {
@@ -277,6 +277,40 @@ fn generate_stats_impl(arena_type_name: &Ident) -> TokenStream2 {
 ///     fn debug_name(&self) -> &str { "drawable" }
 /// }
 /// ```
+///
+/// # For Enums
+///
+/// By default, generates `Debug`, `PartialEq`, `Eq`, `PartialOrd`, and `Ord` implementations.
+/// Use flags to opt out of automatic trait generation:
+///
+/// ```ignore
+/// // Default - all traits generated
+/// #[tagged_dispatch(Draw)]
+/// enum Shape { Circle, Rectangle }
+///
+/// // Opt out of Debug to provide custom implementation
+/// #[tagged_dispatch(Draw, no_debug)]
+/// enum Shape { Circle, Rectangle }
+///
+/// // Opt out of comparison traits (PartialEq, Eq, PartialOrd, Ord)
+/// #[tagged_dispatch(Draw, no_cmp)]
+/// enum Shape { Circle, Rectangle }
+///
+/// // Opt out of ordering traits only (PartialOrd, Ord)
+/// #[tagged_dispatch(Draw, no_ord)]
+/// enum Shape { Circle, Rectangle }
+///
+/// // Opt out of all automatic trait implementations
+/// #[tagged_dispatch(Draw, no_traits)]
+/// enum Shape { Circle, Rectangle }
+/// ```
+///
+/// Available flags:
+/// - `no_debug` - Skip Debug implementation
+/// - `no_eq` - Skip PartialEq/Eq implementations
+/// - `no_ord` - Skip PartialOrd/Ord implementations
+/// - `no_cmp` - Skip all comparison traits (equivalent to `no_eq, no_ord`)
+/// - `no_traits` - Skip all automatic trait implementations
 #[proc_macro_attribute]
 pub fn tagged_dispatch(args: TokenStream, input: TokenStream) -> TokenStream {
     // Check if this is being applied to a trait or an enum
@@ -366,17 +400,17 @@ fn process_trait(mut trait_def: ItemTrait) -> TokenStream {
 
 /// Process an enum definition with #[tagged_dispatch(Trait1, Trait2, ...)]
 fn process_enum(args: TokenStream, mut enum_def: DeriveInput) -> TokenStream {
-    // Parse the trait list
-    let traits = parse_macro_input!(args as TraitList);
-    
+    // Parse the trait list and flags
+    let parsed = parse_macro_input!(args as TraitListWithFlags);
+
     let enum_name = &enum_def.ident;
     let vis = &enum_def.vis;
     let generics = &enum_def.generics;
-    
+
     // Check if this is an arena version (has lifetime parameter)
     let has_lifetime = !generics.lifetimes().collect::<Vec<_>>().is_empty();
     let lifetime = generics.lifetimes().next().map(|lt| &lt.lifetime);
-    
+
     // Transform enum variants to ensure they all have types
     let variants = if let Data::Enum(ref mut data_enum) = enum_def.data {
         process_enum_variants(data_enum)
@@ -388,12 +422,12 @@ fn process_enum(args: TokenStream, mut enum_def: DeriveInput) -> TokenStream {
         .to_compile_error()
         .into();
     };
-    
+
     // Generate the implementation based on whether it's arena or owned
     if has_lifetime {
-        generate_arena_impl(enum_name, vis, lifetime.unwrap(), &variants, &traits)
+        generate_arena_impl(enum_name, vis, lifetime.unwrap(), &variants, &parsed.traits, &parsed.flags)
     } else {
-        generate_owned_impl(enum_name, vis, &variants, &traits)
+        generate_owned_impl(enum_name, vis, &variants, &parsed.traits, &parsed.flags)
     }
 }
 
@@ -428,7 +462,8 @@ fn generate_owned_impl(
     enum_name: &Ident,
     vis: &syn::Visibility,
     variants: &[(Ident, Type)],
-    traits: &TraitList,
+    traits: &[Path],
+    flags: &TraitGenerationFlags,
 ) -> TokenStream {
     let enum_type_name = format_ident!("{}Type", enum_name);
     
@@ -499,7 +534,7 @@ fn generate_owned_impl(
     }).collect();
 
     // Generate dispatch macro invocations for each trait
-    let dispatch_invocations = traits.items.iter().map(|trait_path| {
+    let dispatch_invocations = traits.iter().map(|trait_path| {
         let trait_name = &trait_path.segments.last().unwrap().ident;
         let macro_name = format_ident!("__impl_{}_dispatch", trait_name.to_string().to_snake_case());
         let variant_list = variant_list.clone();
@@ -508,9 +543,9 @@ fn generate_owned_impl(
             #macro_name!(#enum_name, #enum_type_name, owned, [#(#variant_list),*]);
         }
     });
-    
+
     // Generate compile-time trait checks
-    let trait_checks = traits.items.iter().flat_map(|trait_path| {
+    let trait_checks = traits.iter().flat_map(|trait_path| {
         variants.iter().map(move |(_, ty)| {
             quote! {
                 const _: fn() = || {
@@ -520,28 +555,77 @@ fn generate_owned_impl(
             }
         })
     });
-    
+
+    // Conditionally generate trait implementations
+    let debug_impl = if flags.should_generate_debug() {
+        quote! {
+            impl ::core::fmt::Debug for #enum_name {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    write!(f, "{}::{:?}", stringify!(#enum_name), self.tag_type())
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let eq_impl = if flags.should_generate_eq() {
+        quote! {
+            impl ::core::cmp::PartialEq for #enum_name {
+                fn eq(&self, other: &Self) -> bool {
+                    self.0.eq(&other.0)
+                }
+            }
+
+            impl ::core::cmp::Eq for #enum_name {}
+        }
+    } else {
+        quote! {}
+    };
+
+    let ord_impl = if flags.should_generate_ord() {
+        quote! {
+            impl ::core::cmp::PartialOrd for #enum_name {
+                fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
+                    self.0.partial_cmp(&other.0)
+                }
+            }
+
+            impl ::core::cmp::Ord for #enum_name {
+                fn cmp(&self, other: &Self) -> ::core::cmp::Ordering {
+                    self.0.cmp(&other.0)
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let output = quote! {
         /// Tagged pointer dispatch type
         #[repr(transparent)]
         #vis struct #enum_name(::tagged_dispatch::TaggedPtr<()>);
-        
+
         /// Type variants for compile-time checking
         #[repr(u8)]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
         #vis enum #enum_type_name {
             #(#enum_variants,)*
         }
-        
+
         impl #enum_name {
             #(#constructors)*
-            
+
             #[inline(always)]
             pub fn tag_type(&self) -> #enum_type_name {
                 unsafe { ::core::mem::transmute(self.0.tag()) }
             }
         }
-        
+
+        #debug_impl
+        #eq_impl
+        #ord_impl
+
         #(#from_impls)*
         
         impl Drop for #enum_name {
@@ -589,7 +673,8 @@ fn generate_arena_impl(
     vis: &syn::Visibility,
     lifetime: &syn::Lifetime,
     variants: &[(Ident, Type)],
-    traits: &TraitList,
+    traits: &[Path],
+    flags: &TraitGenerationFlags,
 ) -> TokenStream {
     let enum_type_name = format_ident!("{}Type", enum_name);
     let builder_name = format_ident!("{}ArenaBuilder", enum_name);
@@ -643,7 +728,7 @@ fn generate_arena_impl(
     }).collect();
 
     // Generate dispatch macro invocations for each trait
-    let dispatch_invocations = traits.items.iter().map(|trait_path| {
+    let dispatch_invocations = traits.iter().map(|trait_path| {
         let trait_name = &trait_path.segments.last().unwrap().ident;
         let macro_name = format_ident!("__impl_{}_dispatch", trait_name.to_string().to_snake_case());
         let variant_list = variant_list.clone();
@@ -654,7 +739,7 @@ fn generate_arena_impl(
     });
 
     // Generate compile-time trait checks
-    let trait_checks = traits.items.iter().flat_map(|trait_path| {
+    let trait_checks = traits.iter().flat_map(|trait_path| {
         variants.iter().map(move |(_, ty)| {
             quote! {
                 const _: fn() = || {
@@ -682,6 +767,51 @@ fn generate_arena_impl(
     // Generate stats implementation
     let stats_impl = generate_stats_impl(&arena_type_name);
 
+    // Conditionally generate trait implementations
+    let debug_impl = if flags.should_generate_debug() {
+        quote! {
+            impl<#lifetime> ::core::fmt::Debug for #enum_name<#lifetime> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    write!(f, "{}::{:?}", stringify!(#enum_name), self.tag_type())
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let eq_impl = if flags.should_generate_eq() {
+        quote! {
+            impl<#lifetime> ::core::cmp::PartialEq for #enum_name<#lifetime> {
+                fn eq(&self, other: &Self) -> bool {
+                    self.0.eq(&other.0)
+                }
+            }
+
+            impl<#lifetime> ::core::cmp::Eq for #enum_name<#lifetime> {}
+        }
+    } else {
+        quote! {}
+    };
+
+    let ord_impl = if flags.should_generate_ord() {
+        quote! {
+            impl<#lifetime> ::core::cmp::PartialOrd for #enum_name<#lifetime> {
+                fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
+                    self.0.partial_cmp(&other.0)
+                }
+            }
+
+            impl<#lifetime> ::core::cmp::Ord for #enum_name<#lifetime> {
+                fn cmp(&self, other: &Self) -> ::core::cmp::Ordering {
+                    self.0.cmp(&other.0)
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let output = quote! {
         /// Arena-allocated tagged pointer dispatch type
         #[repr(transparent)]
@@ -692,7 +822,7 @@ fn generate_arena_impl(
 
         /// Type variants for compile-time checking
         #[repr(u8)]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
         #vis enum #enum_type_name {
             #(#enum_variants,)*
         }
@@ -755,6 +885,10 @@ fn generate_arena_impl(
             }
         }
 
+        #debug_impl
+        #eq_impl
+        #ord_impl
+
         // No Drop impl needed - arena handles deallocation
 
         // Apply dispatch implementations for each trait
@@ -807,22 +941,75 @@ fn generate_dispatch_method(method: &TraitItemFn) -> proc_macro2::TokenStream {
     }
 }
 
-/// Parser for comma-separated trait list
-struct TraitList {
-    items: Vec<Path>,
+/// Configuration flags for controlling trait generation
+#[derive(Debug, Clone, Default)]
+struct TraitGenerationFlags {
+    no_debug: bool,
+    no_eq: bool,
+    no_ord: bool,
+    no_traits: bool,
 }
 
-impl Parse for TraitList {
+impl TraitGenerationFlags {
+    fn should_generate_debug(&self) -> bool {
+        !self.no_traits && !self.no_debug
+    }
+
+    fn should_generate_eq(&self) -> bool {
+        !self.no_traits && !self.no_eq
+    }
+
+    fn should_generate_ord(&self) -> bool {
+        !self.no_traits && !self.no_ord && !self.no_eq // Ord requires Eq
+    }
+}
+
+/// Parser for comma-separated trait list and optional flags
+struct TraitListWithFlags {
+    traits: Vec<Path>,
+    flags: TraitGenerationFlags,
+}
+
+impl Parse for TraitListWithFlags {
     fn parse(input: ParseStream) -> Result<Self> {
+        let mut traits = Vec::new();
+        let mut flags = TraitGenerationFlags::default();
+
         if input.is_empty() {
-            // No traits specified, return empty list
-            return Ok(TraitList { items: vec![] });
+            return Ok(TraitListWithFlags { traits, flags });
         }
-        
-        let items = Punctuated::<Path, Token![,]>::parse_terminated(input)?
-            .into_iter()
-            .collect();
-        Ok(TraitList { items })
+
+        // Parse comma-separated items
+        let items = Punctuated::<syn::Expr, Token![,]>::parse_terminated(input)?;
+
+        for item in items {
+            // Try to parse as a path (trait name)
+            if let syn::Expr::Path(expr_path) = item {
+                // Check if it's a known flag
+                if expr_path.path.is_ident("no_debug") {
+                    flags.no_debug = true;
+                } else if expr_path.path.is_ident("no_eq") {
+                    flags.no_eq = true;
+                } else if expr_path.path.is_ident("no_ord") {
+                    flags.no_ord = true;
+                } else if expr_path.path.is_ident("no_cmp") {
+                    flags.no_eq = true;
+                    flags.no_ord = true;
+                } else if expr_path.path.is_ident("no_traits") {
+                    flags.no_traits = true;
+                } else {
+                    // It's a trait path
+                    traits.push(expr_path.path);
+                }
+            } else {
+                return Err(syn::Error::new_spanned(
+                    item,
+                    "Expected trait name or flag (no_debug, no_eq, no_ord, no_cmp, no_traits)"
+                ));
+            }
+        }
+
+        Ok(TraitListWithFlags { traits, flags })
     }
 }
 

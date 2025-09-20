@@ -21,10 +21,10 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tagged_dispatch = "0.1"
+tagged_dispatch = "0.3"
 
 # Optional: Enable arena allocation support
-tagged_dispatch = { version = "0.1", features = ["allocator-bumpalo"] }
+tagged_dispatch = { version = "0.3", features = ["allocator-bumpalo"] }
 ```
 
 ### Feature Flags
@@ -312,6 +312,58 @@ assert_eq!(bird.make_sound(), "Tweet!");
 assert_eq!(bird.legs(), 2);  // Overridden
 ```
 
+### Controlling Trait Generation
+
+By default, `tagged_dispatch` generates `Debug`, `PartialEq`, `Eq`, `PartialOrd`, and `Ord` implementations for your enum. You can opt out of these to provide custom implementations:
+
+```rust,no_run
+use tagged_dispatch::tagged_dispatch;
+use std::fmt;
+
+#[tagged_dispatch]
+trait Draw {
+    fn draw(&self);
+}
+
+// Opt out of Debug to provide custom formatting
+#[tagged_dispatch(Draw, no_debug)]
+enum Shape {
+    Circle,
+    Rectangle,
+}
+
+// Implement the trait for each type
+#[derive(Clone)]
+struct Circle { radius: f32 }
+impl Draw for Circle {
+    fn draw(&self) { println!("○"); }
+}
+
+#[derive(Clone)]
+struct Rectangle { width: f32, height: f32 }
+impl Draw for Rectangle {
+    fn draw(&self) { println!("▭"); }
+}
+
+impl fmt::Debug for Shape {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.tag_type() {
+            ShapeType::Circle => write!(f, "○ Circle"),
+            ShapeType::Rectangle => write!(f, "▭ Rectangle"),
+        }
+    }
+}
+
+// Available flags:
+// - no_debug: Skip Debug implementation
+// - no_eq: Skip PartialEq/Eq implementations
+// - no_ord: Skip PartialOrd/Ord implementations
+// - no_cmp: Skip all comparison traits (PartialEq, Eq, PartialOrd, Ord)
+// - no_traits: Skip all automatic trait implementations
+```
+
+Note that all comparison traits use pointer equality, not value equality. Two instances are equal only if they point to the same object.
+
 ### Non-Dispatched Methods
 
 Mark trait methods that shouldn't be dispatched with `#[no_dispatch]`:
@@ -360,6 +412,30 @@ assert_eq!(val.dispatched(), 5);  // This is dispatched
 // Static method is called on the concrete type, not the enum
 assert_eq!(<First as MyTrait>::not_dispatched(), "This won't be dispatched");
 ```
+
+## Migration from 0.2.x to 0.3.0
+
+Version 0.3.0 automatically generates trait implementations that may conflict with your existing code:
+
+```rust,ignore
+// If you previously had:
+impl Debug for MyEnum {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Custom implementation
+    }
+}
+
+// Now add the no_debug flag:
+#[tagged_dispatch(MyTrait, no_debug)]
+enum MyEnum { /* ... */ }
+```
+
+The automatically generated traits are:
+- `Debug` - Shows enum and variant name
+- `PartialEq`/`Eq` - Pointer equality (same object)
+- `PartialOrd`/`Ord` - Orders by variant type, then pointer
+
+If the automatic implementations work for your use case, simply remove your custom implementations.
 
 ## Architecture Requirements
 
